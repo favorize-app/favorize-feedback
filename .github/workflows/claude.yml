@@ -68,6 +68,27 @@ jobs:
               "issue_body": ${{ toJSON(github.event.issue.body) }},
               "labels": ${{ toJSON(github.event.issue.labels.*.name) }}
             }
+      - name: Update status labels
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.issue.number;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            // Add 'accepted' and 'triaged' to show progress
+            await github.rest.issues.addLabels({
+              owner, repo, issue_number: issue,
+              labels: ['accepted', 'triaged']
+            });
+
+            // Remove 'triage' since it's been processed
+            try {
+              await github.rest.issues.removeLabel({
+                owner, repo, issue_number: issue,
+                name: 'triage'
+              });
+            } catch (e) { /* label might already be gone */ }
 
   # Label 'wontfix': polite decline + close
   decline:
