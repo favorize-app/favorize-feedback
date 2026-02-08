@@ -1,62 +1,41 @@
-name: Claude Feedback Triage
+name: Feedback Intake
 
 on:
-  issue_comment:
-    types: [created]
   issues:
     types: [opened]
 
+permissions:
+  issues: write
+
 jobs:
-  # Auto-triage: runs on every new issue with a prompt (bypasses @claude trigger check)
-  claude-triage:
+  acknowledge-and-dispatch:
     if: github.event_name == 'issues'
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      issues: write
-      id-token: write
-      actions: read
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      # Post a friendly public acknowledgment (no technical details)
+      - name: Acknowledge feedback
+        uses: actions/github-script@v7
         with:
-          fetch-depth: 1
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `Thanks for your feedback! Our team will review this and get back to you.\n\nWe'll update this issue when there's progress to share.`
+            });
 
-      - name: Run Claude Code
-        uses: anthropics/claude-code-action@v1
+      # Dispatch to private repo for technical triage
+      - name: Dispatch to private repo
+        uses: peter-evans/repository-dispatch@v3
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          prompt: |
-            A new issue was just opened in this feedback repo.
-            Read the CLAUDE.md file for your triage instructions.
-            Issue number: ${{ github.event.issue.number }}
-            Issue URL: ${{ github.event.issue.html_url }}
-            Issue title: ${{ github.event.issue.title }}
-            Issue body: ${{ github.event.issue.body }}
-
-            Follow the "On New Issue" instructions in CLAUDE.md to triage this issue.
-            Use `gh` CLI to post your triage comment and add labels on the issue.
-          claude_args: "--max-turns 10 --allowedTools Bash,Read,Glob,Grep"
-
-  # Interactive: responds to @claude mentions in comments
-  claude-interactive:
-    if: |
-      github.event_name == 'issue_comment' &&
-      contains(github.event.comment.body, '@claude')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      issues: write
-      id-token: write
-      actions: read
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-
-      - name: Run Claude Code
-        uses: anthropics/claude-code-action@v1
-        with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          claude_args: "--max-turns 5"
+          token: ${{ secrets.DISPATCH_PAT }}
+          repository: favorize-app/favorize-flutter
+          event-type: feedback-triage
+          client-payload: |
+            {
+              "issue_number": ${{ github.event.issue.number }},
+              "issue_title": "${{ github.event.issue.title }}",
+              "issue_url": "${{ github.event.issue.html_url }}",
+              "issue_body": ${{ toJSON(github.event.issue.body) }},
+              "labels": ${{ toJSON(github.event.issue.labels.*.name) }}
+            }
