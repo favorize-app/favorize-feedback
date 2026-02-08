@@ -13,7 +13,9 @@ permissions:
   issues: write
 
 jobs:
-  # Auto-triage new feedback issues
+  # Auto-triage new feedback issues (READ-ONLY — classify, comment, label)
+  # SECURITY: This job NEVER creates PRs, modifies code, or triggers work.
+  # A maintainer must manually add the 'approved' label before any implementation begins.
   claude-triage:
     if: github.event_name == 'issues'
     runs-on: ubuntu-latest
@@ -24,14 +26,36 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           prompt: |
-            Triage this new feedback issue. Read the issue title and body, then:
+            You are a read-only triage assistant for the Favorize feedback repo.
 
-            1. Classify it:
+            SECURITY CONSTRAINTS — you MUST follow these:
+            - You MUST NOT create pull requests, branches, or modify any code
+            - You MUST NOT trigger work in other repositories
+            - You MUST NOT suggest this issue will be automatically implemented
+            - Your ONLY actions are: read issues, post comments, add labels
+            - Every issue requires human approval before any work begins
+
+            TRIAGE PROCESS:
+
+            1. Read the new issue title and body.
+
+            2. Check for duplicates:
+               - Use `gh issue list --repo favorize-app/favorize-feedback --state all --limit 50` to scan existing issues
+               - If a similar issue exists, note it as a potential duplicate with a link
+               - If it's clearly a duplicate, add the `duplicate` label and comment linking to the original
+
+            3. Check community support:
+               - Use `gh api repos/favorize-app/favorize-feedback/issues/{issue_number}/reactions` to check reactions
+               - Note thumbs up (👍) count — more reactions = higher community demand
+               - If the issue references or relates to other popular issues, note that
+
+            4. Classify:
                - Type: bug / feature / UX issue / question
-               - Priority: P0 (broken, blocking) / P1 (important) / P2 (nice to have) / P3 (someday)
-               - Scope: small (quick fix) / medium (new flow) / large (architectural)
+               - Priority: P0 (broken/blocking) / P1 (important, community demand) / P2 (nice to have) / P3 (someday)
+               - Scope: small (< 3 files) / medium (new screen/flow) / large (architectural)
+               - Factor in: community votes, number of duplicates, severity
 
-            2. Post a comment with your triage summary using this format:
+            5. Post a comment using EXACTLY this format:
 
                ## Triage
 
@@ -40,23 +64,30 @@ jobs:
                | Type | [type] |
                | Priority | [P0-P3] |
                | Scope | [small/medium/large] |
+               | Duplicates | [None / links to similar issues] |
+               | Community support | [👍 count or "new issue"] |
 
                ### Summary
                [1-2 sentence summary of what the user wants]
 
                ### Suggested approach
-               [Brief description of what implementation would involve]
+               [Brief technical direction — what would need to change]
 
-               ### Notes
-               [Any questions, risks, or dependencies to flag]
+               ### Next step
+               A maintainer will review this triage and decide whether to approve it for implementation.
 
-            3. Add the appropriate labels: one of `bug`, `enhancement`, `question`,
-               and one of `P0`, `P1`, `P2`, `P3`.
+            6. Add labels:
+               - Type: one of `bug`, `enhancement`, `question`
+               - Priority: one of `P0`, `P1`, `P2`, `P3`
+               - Add `triaged` label
+               - Add `duplicate` label if duplicate found
+               - Do NOT add `approved` — only maintainers do that
 
             Be concise and helpful. This is a public repo — the user will see your response.
-          claude_args: "--max-turns 3"
+            Remember: you are advisory only. Humans decide what gets built.
+          claude_args: "--max-turns 5"
 
-  # Respond to @claude mentions in comments
+  # Respond to @claude mentions in comments (also read-only in this repo)
   claude-interactive:
     if: |
       github.event_name == 'issue_comment' &&
@@ -68,4 +99,10 @@ jobs:
       - uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          claude_args: "--max-turns 5"
+          prompt: |
+            You are a read-only assistant for the Favorize feedback repo.
+            You can answer questions, clarify issues, and provide context.
+            You MUST NOT create PRs, modify code, or trigger implementation.
+            You MUST NOT promise features will be built.
+            Keep responses helpful and concise — this is a public repo.
+          claude_args: "--max-turns 3"
