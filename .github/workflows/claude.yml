@@ -29,13 +29,14 @@ jobs:
           prompt: |
             A new issue was just opened in this feedback repo.
             Read the CLAUDE.md file for your triage instructions.
-            Read the issue at: ${{ github.event.issue.html_url }}
+            Issue number: ${{ github.event.issue.number }}
+            Issue URL: ${{ github.event.issue.html_url }}
             Issue title: ${{ github.event.issue.title }}
             Issue body: ${{ github.event.issue.body }}
 
             Follow the "On New Issue" instructions in CLAUDE.md to triage this issue.
-            Use `gh` CLI to post your triage comment and add labels.
-          claude_args: "--max-turns 5"
+            Use `gh` CLI to post your triage comment and add labels on the issue.
+          claude_args: "--max-turns 10 --allowedTools Bash,Read,Glob,Grep"
 
   # Interactive: responds to @claude mentions in comments
   claude-interactive:
