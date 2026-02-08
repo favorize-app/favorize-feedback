@@ -1,0 +1,71 @@
+name: Claude Feedback Triage
+
+on:
+  # Auto-triage new issues
+  issues:
+    types: [opened]
+  # Respond to @claude mentions in issue comments
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  # Auto-triage new feedback issues
+  claude-triage:
+    if: github.event_name == 'issues'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            Triage this new feedback issue. Read the issue title and body, then:
+
+            1. Classify it:
+               - Type: bug / feature / UX issue / question
+               - Priority: P0 (broken, blocking) / P1 (important) / P2 (nice to have) / P3 (someday)
+               - Scope: small (quick fix) / medium (new flow) / large (architectural)
+
+            2. Post a comment with your triage summary using this format:
+
+               ## Triage
+
+               | Field | Value |
+               |-------|-------|
+               | Type | [type] |
+               | Priority | [P0-P3] |
+               | Scope | [small/medium/large] |
+
+               ### Summary
+               [1-2 sentence summary of what the user wants]
+
+               ### Suggested approach
+               [Brief description of what implementation would involve]
+
+               ### Notes
+               [Any questions, risks, or dependencies to flag]
+
+            3. Add the appropriate labels: one of `bug`, `enhancement`, `question`,
+               and one of `P0`, `P1`, `P2`, `P3`.
+
+            Be concise and helpful. This is a public repo — the user will see your response.
+          claude_args: "--max-turns 3"
+
+  # Respond to @claude mentions in comments
+  claude-interactive:
+    if: |
+      github.event_name == 'issue_comment' &&
+      contains(github.event.comment.body, '@claude')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_args: "--max-turns 5"
