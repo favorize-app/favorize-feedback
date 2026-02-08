@@ -2,29 +2,58 @@ name: Feedback Intake
 
 on:
   issues:
-    types: [opened]
+    types: [opened, labeled]
 
 permissions:
   issues: write
 
 jobs:
-  acknowledge-and-dispatch:
-    if: github.event_name == 'issues'
+  # New issue: friendly ack + duplicate scan (no AI cost)
+  acknowledge:
+    if: github.event_name == 'issues' && github.event.action == 'opened'
     runs-on: ubuntu-latest
     steps:
-      # Post a friendly public acknowledgment (no technical details)
-      - name: Acknowledge feedback
+      - name: Acknowledge and check duplicates
         uses: actions/github-script@v7
         with:
           script: |
+            const issue = context.payload.issue;
+            const title = issue.title.replace(/^\[(Bug|Feature|Question)\]\s*/i, '').trim();
+
+            // Search for similar open/closed issues (excluding this one)
+            const keywords = title.split(/\s+/).filter(w => w.length > 3).slice(0, 5).join(' ');
+            let duplicateNote = '';
+
+            if (keywords) {
+              const results = await github.rest.search.issuesAndPullRequests({
+                q: `repo:${context.repo.owner}/${context.repo.repo} is:issue ${keywords}`,
+                per_page: 5
+              });
+
+              const related = results.data.items.filter(i => i.number !== issue.number);
+              if (related.length > 0) {
+                const links = related.map(i =>
+                  `- #${i.number} — ${i.title} (${i.state})`
+                ).join('\n');
+                duplicateNote = `\n\n**Possibly related issues:**\n${links}\n\nIf this is a duplicate, we'll link them together.`;
+              }
+            }
+
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: `Thanks for your feedback! Our team will review this and get back to you.\n\nWe'll update this issue when there's progress to share.`
+              issue_number: issue.number,
+              body: `Thanks for your feedback! Our team will review this and get back to you.\n\nWe'll update this issue when there's progress to share.${duplicateNote}`
             });
 
-      # Dispatch to private repo for technical triage
+  # Label 'triage': dispatch to private repo for full technical triage
+  dispatch-triage:
+    if: |
+      github.event_name == 'issues' &&
+      github.event.action == 'labeled' &&
+      github.event.label.name == 'triage'
+    runs-on: ubuntu-latest
+    steps:
       - name: Dispatch to private repo
         uses: peter-evans/repository-dispatch@v3
         with:
@@ -39,3 +68,30 @@ jobs:
               "issue_body": ${{ toJSON(github.event.issue.body) }},
               "labels": ${{ toJSON(github.event.issue.labels.*.name) }}
             }
+
+  # Label 'wontfix': polite decline + close
+  decline:
+    if: |
+      github.event_name == 'issues' &&
+      github.event.action == 'labeled' &&
+      github.event.label.name == 'wontfix'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Decline and close
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `Thanks for the suggestion! After reviewing, we've decided not to pursue this for now. This could be due to scope, technical constraints, or priorities.\n\nIf things change, we may revisit. Feel free to continue the conversation if you have additional context that might change our assessment.`
+            });
+
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              state: 'closed',
+              state_reason: 'not_planned'
+            });
