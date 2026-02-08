@@ -7,10 +7,9 @@ on:
     types: [opened]
 
 jobs:
-  claude:
-    if: |
-      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'issues')
+  # Auto-triage: runs on every new issue with a prompt (bypasses @claude trigger check)
+  claude-triage:
+    if: github.event_name == 'issues'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -24,7 +23,38 @@ jobs:
           fetch-depth: 1
 
       - name: Run Claude Code
-        id: claude
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            A new issue was just opened in this feedback repo.
+            Read the CLAUDE.md file for your triage instructions.
+            Read the issue at: ${{ github.event.issue.html_url }}
+            Issue title: ${{ github.event.issue.title }}
+            Issue body: ${{ github.event.issue.body }}
+
+            Follow the "On New Issue" instructions in CLAUDE.md to triage this issue.
+            Use `gh` CLI to post your triage comment and add labels.
+          claude_args: "--max-turns 5"
+
+  # Interactive: responds to @claude mentions in comments
+  claude-interactive:
+    if: |
+      github.event_name == 'issue_comment' &&
+      contains(github.event.comment.body, '@claude')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      id-token: write
+      actions: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude Code
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
