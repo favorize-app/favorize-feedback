@@ -11,6 +11,7 @@ on:
 permissions:
   contents: read
   issues: write
+  id-token: write
 
 jobs:
   # Auto-triage new feedback issues (READ-ONLY — classify, comment, label)
